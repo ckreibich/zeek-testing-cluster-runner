@@ -1,0 +1,92 @@
+name: Run cluster tests
+
+on:
+  schedule:
+    - cron: '0/5 * * * *'
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE_FILE: /tmp/zeek-image.tar
+  ZEEK_REPO: zeek/zeek
+  ZEEK_REF: topic/christian/management-agent-boot-fix
+
+permissions:
+  contents: read
+
+jobs:
+  cluster-testing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install btest
+        run: |
+          python -m pip install --upgrade pip
+          pip install btest
+
+      - uses: actions/checkout@v3
+        with:
+          repository: ${{ env.ZEEK_REPO }}
+          ref: ${{ env.ZEEK_REF }}
+
+      - name: Determine git commit
+        run: |
+          echo "GITHUB_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Setup Docker image cache
+        id: cache-docker-image
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-docker-image
+        with:
+          path: ${{ env.IMAGE_FILE }}
+          key: ${{ env.GITHUB_SHA }}
+
+      # This job only runs with previously built Docker images, so if we have a
+      # cache miss, stop. We'll try again next time this is scheduled.
+      - name: Check cache state
+        if: ${{ steps.cache-docker-image.outputs.cache-hit != 'true' }}
+        run: exit 1
+
+      - name: Load Docker image
+        run: |
+          docker load --input ${{ env.IMAGE_FILE }}
+
+      # The testsuite ref to use for this version of Zeek is stored in a file in
+      # the Zeek source tree.
+      - name: Get testsuite version
+        run: |
+          echo "TESTSUITE_SHA=$(cat ./testing/external/commit-hash.zeek-testing-cluster)" >> $GITHUB_ENV
+
+      - name: Retrieve cluster testsuite
+        uses: actions/checkout@v2
+        with:
+          repository: zeek/zeek-testing-cluster
+          path: testing/external/zeek-testing-cluster
+          ref: ${{ ENV.TESTSUITE_SHA }}
+
+      - name: Run testsuite
+        run: make -C testing/external/zeek-testing-cluster
+
+      # upload-artifact balks at certain characters in artifact
+      # filenames, so substitute them for dots.
+      - name: Sanitize artifacts
+        if: failure()
+        run: |
+          if [ -f testing/external/zeek-testing-cluster/.tmp ]; then
+              sudo apt-get -q update && sudo apt-get install -q -y rename
+              find testing/external/zeek-testing-cluster/.tmp -depth -execdir rename 's/[":<>|*?\r\n]/./g' "{}" \;
+          fi
+
+      - name: Preserve btest artifacts
+        uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          name: cluster-btest
+          path: testing/external/zeek-testing-cluster/.tmp
+          if-no-files-found: ignore
