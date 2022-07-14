@@ -11,7 +11,7 @@ defaults:
 env:
   IMAGE_FILE: /tmp/zeek-image.tar
   ZEEK_REPO: zeek/zeek
-  ZEEK_REF: topic/christian/management-agent-boot-fix
+  ZEEK_REF: master
 
 permissions:
   contents: read
