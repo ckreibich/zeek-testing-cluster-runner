@@ -11,7 +11,7 @@ defaults:
 env:
   IMAGE_FILE: /tmp/zeek-image.tar
   ZEEK_REPO: zeek/zeek
-  ZEEK_REF: master
+  ZEEK_REF: 1d2c12e9801018575f462a496b7da87e2cbd21e1
 
 permissions:
   contents: read
